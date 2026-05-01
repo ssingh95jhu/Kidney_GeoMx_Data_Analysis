@@ -1,0 +1,186 @@
+---
+title: "Gene Set Enrichment Analysis using GeoMx Data"
+output: html_document
+date: "2026-05-01"
+---
+
+SET WORKING DIRECTORY
+
+We first set up a working directory where I intend to store all my GeoMx files
+that will be necessary to run QC and downstream analysis.
+
+```{r WD, message=FALSE, warning=FALSE}
+dir<-"/Users/srujansingh/Documents/Personal/GeoMx"
+setwd(dir)
+```
+
+LOAD REQUIRED LIBRARIES
+
+The following libraries need to be uploaded into the R working environment. These
+libraries contain the functions needed to perform downstream analysis.
+
+```{r Load Libraries, message=FALSE, warning=FALSE}
+library(clusterProfiler)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(ggplot2)
+library(msigdbr) #For HALLMARK Pathway
+library(enrichplot) #For ClusterProfiler()
+library(biomaRt)
+```
+
+LOAD THE DIFFERENTIAL EXPRESSION ANALYSIS RESULTS 
+
+Earlier, we had performed differential expression analysis to find differentually 
+expressed genes between the normal and DKD kidneys.
+
+```{r Load results, message=FALSE, warning=FALSE}
+#Loading the results from the differential expression analysis performed earlier:
+results2<-readRDS("results2.rds") #results were saved as R object.
+head(results2) # helps visualize the structure and elements of the result.
+```
+
+SUSBET THE RESULT
+
+
+Now we subset the result to focus only on the glomerulus region. Also, we only 
+keep genes with FDR<0.05
+
+```{r Subset results, message=FALSE, warning=FALSE}
+res_glom<-results2[(results2$Subset=="glomerulus")&(results2$'FDR' <0.05),]
+```
+
+ARRANGE THE GENE LIST BASED ON THE ESTIMATE VALUES
+
+Now that we have subset the differentially expressed gene list,  we need to a
+arrange the genes as per their estimate values.
+
+```{r Arrange, message=FALSE, warning=FALSE}
+df_glom<-res_glom[rev(order(res_glom$Estimate)),]
+head(df_glom) #visualize after rerranging
+```
+
+CREATE THE ORDERED GENE LIST FOR GENE SET ENRICHMENT ANALYSIS
+
+Now, we need to create the gen list with their corresponding estimate values to
+run geneset enrichment analysis (GSEA). We are using using HALLMARK database for our 
+geneset enrichment analysis.
+
+```{r Create Gene List, message=FALSE, warning=FALSE}
+df_glom_HALL<-df_glom$Estimate
+names(df_glom_HALL)<-df_glom$Gene
+head(df_glom_HALL) #visualize gene list for GSEA
+```
+
+RUN THE GENE SET ENRICHMENT ANALYSIS
+
+Since, the ordered gene list looks fine proceeed to perform gene set enrichment 
+analysis.
+
+```{r GSEA, message=FALSE, warning=FALSE}
+gene_sets <- msigdbr(species = "Homo sapiens", category = "H")
+background <- gene_sets[, c("gs_name", "gene_symbol")]
+
+#df_glom.HALL.GSEA will contain the geneset enrichment analysis results
+df_glom.HALL.GSEA <- GSEA(  #GSEA function
+  geneList = df_glom_HALL,
+  TERM2GENE = background,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = "BH"
+)
+
+```
+
+PROCESSING THE GENE SET ENRICHMENT DATA (FOR VISUALIZATION)
+
+```{r Process-Visualize, message=FALSE, warning=FALSE}
+# df_glom.HALL.GSEA.Plot<-df_glom.HALL.GSEA
+# gseaplot(df_glom.HALL.GSEA.Plot, geneSetID = 1)
+# saveRDS(df_glom.HALL.GSEA.Plot, file="EnrichmentPlots/Glomerulus_Normal_vs_DKD_HALL.GSEA.rds")
+# 
+# if(sign(max(df_glom.HALL.GSEA$NES))==1) 
+# { df_glom.HALL.GSEA<-df_glom.HALL.GSEA[rev(order(df_glom.HALL.GSEA$NES)),]
+# } else { df_glom.HALL.GSEA<-df_glom.HALL.GSEA[order(df_glom.HALL.GSEA$NES),] }
+# 
+# df_glom.HALL.GSEA$core_enrichment<-gsub("/",",",df_glom.HALL.GSEA$core_enrichment)
+# head(df_glom.HALL.GSEA$Description) #Visualize the enriched pathways.
+# 
+# df_glom_vis<-data.frame(Pathway=df_glom.HALL.GSEA$Description,
+#                         NES=df_glom.HALL.GSEA$NES)
+# 
+# df_glom_vis$Pathway<-gsub("HALLMARK_","", df_glom_vis$Pathway)
+# df_glom_vis$Enrichment<-"Positive"
+# df_glom_vis[df_glom_vis$NES<0,]$Enrichment<-"Negative"
+# head(df_glom_vis)
+# 
+# df_glom_vis$Pathway<-factor(df_glom_vis$Pathway, levels=rev(df_glom_vis$Pathway))
+
+# ggplot(df_glom_vis, aes(x=Pathway, y=NES, fill=Enrichment)) + 
+#   geom_bar(stat="identity") +
+#   coord_flip() +
+#   geom_hline(yintercept=0, linetype="solid", color="black", size=0.5) + 
+#   coord_flip() + theme_minimal()+
+#   scale_fill_manual(values = c("Positive" = "orangered", "Negative" = "deepskyblue")) + 
+#   labs(x = "", y = "Normalized Enrichment Score", title = "Gene Set Enrichment Analysis") +
+#   theme(panel.border = element_rect(color = "black", fill = NA, size = 0.5),  # Add box around plot
+#         axis.text.x = element_text(size = 14, color="black"), # Increase font size of pathway names
+#         axis.text.y = element_text(size = 14, color="black"),
+#         axis.ticks = element_line(color = "black"),  # Add tick marks
+#         axis.ticks.length = unit(0.2, "cm"),  # Adjust tick mark length
+#         axis.line = element_line(color = "black"),
+#         axis.title.x = element_text(size = 14))
+# dev.off()
+
+#The above code is commented out becasue it was giving error ithin the Rmd file.
+#But if you run it within the R console, you should get a figure as shown below:
+knitr::include_graphics("NES_GeoMx_Glom.pdf")
+```
+
+You can visualize all the enriched pathways along with their normalized enrichment scores (NES).
+A positive enrichment (NES) is colored red while a negative enrichment (NES) is colored blue.
+
+#VISUALIZE INDIVIDUAL RUNNING ENRIECHMENT SCORE PLOTS FOR INDIVIDUAL PATHWAYS
+
+```{r Running ES, message=FALSE, warning=FALSE}
+# ID1="HALLMARK_MYC_TARGETS_V1"
+# gseaplot2(df_glom.HALL.GSEA.Plot, geneSetID = c(ID1),  subplots=1:2, title="MYC_TARGETS_V1_PATHWAY")
+
+#Similarly, the above code has been commented out. But if you run it in the R console 
+#you should see the follwoing plot:
+knitr::include_graphics("MYC.pdf")
+
+```
+
+```{r Running ES2, message=FALSE, warning=FALSE}
+
+# ID2="HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION"
+# gseaplot2(df_glom.HALL.GSEA.Plot, geneSetID = c(ID2),  subplots=1:2, title="EPITHELIAL_MESENCHYMAL_TRANSITION_PATHWAY")
+# 
+# ID3="HALLMARK_UNFOLDED_PROTEIN_RESPONSE"
+# gseaplot2(df_glom.HALL.GSEA.Plot, geneSetID = c(ID3),  subplots=1:2, title="UNFOLDED_PROTEIN_RESPONSE_PATHWAY")
+# 
+# ID4="HALLMARK_GLYCOLYSIS"
+# gseaplot2(df_glom.HALL.GSEA.Plot, geneSetID = c(ID4),  subplots=1:2, title="GLYCOLYSIS_PATHWAY")
+# 
+# ID5="HALLMARK_TNFA_SIGNALING_VIA_NFKB"
+# gseaplot2(df_glom.HALL.GSEA.Plot, geneSetID = c(ID5),  subplots=1:2, title="TNFA_SIGNALING_VIA_NFKB_PATHWAY")
+
+#Similarly, the above code has been commented out. But if you run it in the R console 
+#you should see the follwoing plot:
+knitr::include_graphics("EMT.pdf")
+knitr::include_graphics("Unfolded_Protein.pdf")
+knitr::include_graphics("Glycolysis.pdf")
+knitr::include_graphics("NFKB.pdf")
+
+```
+
+Finally, you can also visualize all the running score enrichment plots within the 
+same plot:
+
+```{r Running ES_All, message=FALSE, warning=FALSE}
+#gseaplot2(df_glom.HALL.GSEA.Plot, geneSetID = c(ID1, ID2, ID3, ID4, ID5),  subplots=1:2, title="ALL_ENRICHED_PATHWAYS")
+
+#Similarly, the above code has been commented out. But if you run it in the R console 
+#you should see the follwoing plot:
+knitr::include_graphics("All_Pathways.pdf")
+```
